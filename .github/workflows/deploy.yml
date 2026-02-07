@@ -1,14 +1,14 @@
 name: 12-Hour Weather Auto-Update
 on:
   schedule:
-    - cron: '0 5,17 * * *' # Runs at 5:00 AM and 5:00 PM UTC
-  workflow_dispatch:      # Allows you to click "Run" manually in GitHub
+    - cron: '0 5,17 * * *' # Runs twice daily
+  workflow_dispatch:      # Allows manual trigger
 
 jobs:
   run-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Allows the bot to "push" the new images to your repo
+      contents: write
     steps:
       - uses: actions/checkout@v4
       
@@ -18,7 +18,7 @@ jobs:
           python-version: '3.10'
 
       - name: Install Dependencies
-        run: pip install requests matplotlib cartopy
+        run: pip install requests matplotlib cartopy numpy
 
       - name: Generate AI Forecast
         env:
@@ -29,6 +29,7 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action Bot"
-          git add images/*.png
-          git commit -m "Auto-update: New Southeast US AI Forecast" || echo "No changes to commit"
-          git push
+          # The '|| true' ensures the workflow doesn't crash if no files changed
+          git add images/
+          git commit -m "Auto-update: New AI Radar & Forecast" || echo "No changes to commit"
+          git push || echo "Push failed, likely no changes."
