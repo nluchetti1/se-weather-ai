@@ -12,6 +12,7 @@
         button.active { background: #00ffcc; color: #000; }
         input[type=range] { width: 85%; accent-color: #00ffcc; margin: 15px 0; }
         .stat-value { color: #fff; text-shadow: 0 0 5px #00ffcc; }
+        #footer { font-size: 0.7em; color: #666; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -30,6 +31,7 @@
             <button class="var-btn" onclick="setVar('precip', this)">Precip</button>
             <button class="var-btn" onclick="setVar('wind', this)">Wind</button>
         </div>
+        <div id="footer">Last Updated: <span id="gen-time">...</span></div>
     </div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
@@ -41,6 +43,7 @@
         fetch('images/rain_data.json?v=' + Date.now()).then(r => r.json()).then(data => { 
             siteMeta = data; 
             document.getElementById('cycle-display').innerText = data.cycle;
+            document.getElementById('gen-time').innerText = data.generated;
             syncUpdate(); 
         });
 
@@ -51,7 +54,7 @@
             document.getElementById('time-display').innerText = "+" + currentHour + "h";
             document.getElementById('rain-total').innerText = siteMeta.rain_totals[currentHour] || "0.00";
         }
-
+        
         var playing = false, playInterval;
         function togglePlay() {
             playing = !playing; document.getElementById('play-btn').innerText = playing ? "⏸ Pause" : "▶ Play";
