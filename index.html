@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SE US AI Weather</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; background: #121212; color: white; font-family: sans-serif; text-align: center; }
+        #map { height: 75vh; width: 100%; }
+        .ui { padding: 20px; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="ui">
+        <h1>Southeast US AI Forecast (3km High-Res)</h1>
+        <p>This map updates every 12 hours using NVIDIA Earth-2 and GFS data.</p>
+        <button onclick="location.reload()">Refresh Data</button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        var map = L.map('map').setView([31, -85], 6);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+
+        // This path 'images/t2m_0.png' is where the GitHub Bot saves the AI output
+        var imageUrl = 'images/t2m_0.png';
+        var imageBounds = [[24, -95], [37, -75]];
+        L.imageOverlay(imageUrl, imageBounds, {opacity: 0.7}).addTo(map);
+    </script>
+</body>
+</html>
