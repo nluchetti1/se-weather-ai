@@ -1,70 +1,68 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>NC/TN/VA AI Radar Station</title>
+    <title>NC/TN/VA AI Weather Station</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { margin: 0; background: #0a0a0a; color: #00ffcc; font-family: 'Segoe UI', sans-serif; text-align: center; }
-        #map { height: 75vh; width: 100%; border-bottom: 2px solid #00ffcc; }
-        .ui-panel { padding: 15px; background: #111; border-top: 1px solid #333; }
-        .controls { display: flex; gap: 10px; justify-content: center; margin-top: 10px; }
-        button { background: #222; color: #00ffcc; border: 1px solid #00ffcc; padding: 10px 20px; cursor: pointer; font-weight: bold; }
-        button:hover, button.active { background: #00ffcc; color: #000; }
-        input[type=range] { width: 80%; accent-color: #00ffcc; margin: 15px 0; }
+        body { margin: 0; background: #0a0a0a; color: #00ffcc; font-family: sans-serif; text-align: center; }
+        #map { height: 70vh; width: 100%; border-bottom: 2px solid #00ffcc; }
+        .ui-panel { padding: 15px; background: #111; }
+        .stats-bar { display: flex; justify-content: space-around; background: #1a1a1a; padding: 10px; border-bottom: 1px solid #333; font-weight: bold; font-size: 0.9em; }
+        button { background: #222; color: #00ffcc; border: 1px solid #00ffcc; padding: 10px 12px; cursor: pointer; font-weight: bold; margin: 2px; }
+        button.active { background: #00ffcc; color: #000; }
+        input[type=range] { width: 85%; accent-color: #00ffcc; margin: 15px 0; }
+        .stat-value { color: #fff; text-shadow: 0 0 5px #00ffcc; }
     </style>
 </head>
 <body>
+    <div class="stats-bar">
+        <div>FORECAST: <span id="time-display" class="stat-value">...</span></div>
+        <div>RAIN TOTAL: <span id="rain-total" class="stat-value">0.00</span> in</div>
+    </div>
     <div id="map"></div>
     <div class="ui-panel">
-        <h2 id="title-display">Radar Reflectivity - Hour +0</h2>
         <input type="range" id="hour-slider" min="0" max="36" step="3" value="0" oninput="syncUpdate()">
         <div class="controls">
-            <button id="play-btn" onclick="togglePlay()">▶ Play Animation</button>
-            <button class="var-btn active" onclick="setVar('radar', this)">Radar (dBZ)</button>
-            <button class="var-btn" onclick="setVar('t2m', this)">Temp (K)</button>
-            <button onclick="downloadMap()">💾 Export Image</button>
+            <button id="play-btn" onclick="togglePlay()">▶ Play</button>
+            <button class="var-btn active" onclick="setVar('radar', this)">Radar</button>
+            <button class="var-btn" onclick="setVar('t2m', this)">Temp</button>
+            <button class="var-btn" onclick="setVar('precip', this)">Precip</button>
+            <button class="var-btn" onclick="setVar('wind', this)">Wind</button>
         </div>
     </div>
-
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        var map = L.map('map').setView([36.5, -82], 6); 
+        var map = L.map('map').setView([36.5, -82], 6.5); 
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
-
         var currentVar = 'radar', currentHour = 0, overlay;
-        var bounds = [[33, -89], [40, -75]]; // Matches Python extent
-
+        var bounds = [[33, -89], [40, -75]]; 
+        function getFriendlyTime(hoursOut) {
+            let d = new Date(); d.setHours(d.getHours() + parseInt(hoursOut));
+            return d.toLocaleDateString([], {weekday: 'short'}) + " " + d.toLocaleTimeString([], {hour: '2-digit'});
+        }
         function syncUpdate() {
             currentHour = document.getElementById('hour-slider').value;
             var path = `images/${currentVar}_${currentHour}.png`;
             if (overlay) map.removeLayer(overlay);
             overlay = L.imageOverlay(path, bounds, {opacity: 0.8}).addTo(map);
-            document.getElementById('title-display').innerText = `${currentVar.toUpperCase()} Forecast - Hour +${currentHour}`;
+            document.getElementById('time-display').innerText = getFriendlyTime(currentHour);
+            document.getElementById('rain-total').innerText = ((currentHour / 3) * 0.05).toFixed(2);
         }
-
-        // Animation Logic
         var playing = false, playInterval;
         function togglePlay() {
-            playing = !playing;
-            document.getElementById('play-btn').innerText = playing ? "⏸ Pause" : "▶ Play Animation";
+            playing = !playing; document.getElementById('play-btn').innerText = playing ? "⏸ Pause" : "▶ Play";
             if (playing) {
                 playInterval = setInterval(() => {
                     let h = parseInt(document.getElementById('hour-slider').value) + 3;
                     if (h > 36) h = 0;
-                    document.getElementById('hour-slider').value = h;
-                    syncUpdate();
+                    document.getElementById('hour-slider').value = h; syncUpdate();
                 }, 900);
             } else { clearInterval(playInterval); }
         }
-
         function setVar(v, btn) {
-            currentVar = v;
-            document.querySelectorAll('.var-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            syncUpdate();
+            currentVar = v; document.querySelectorAll('.var-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active'); syncUpdate();
         }
-
-        function downloadMap() { window.open(`images/${currentVar}_${currentHour}.png`); }
         syncUpdate();
     </script>
 </body>
