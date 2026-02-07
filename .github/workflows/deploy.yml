@@ -1,13 +1,14 @@
-name: Scheduled Southeast Forecast
+name: 12-Hour Weather Auto-Update
 on:
   schedule:
-    # 05:00 UTC (follows 00Z run) and 17:00 UTC (follows 12Z run)
-    - cron: '0 5,17 * * *'
-  workflow_dispatch: # Allows you to manually click "Run" for testing
+    - cron: '0 5,17 * * *' # Runs at 5:00 AM and 5:00 PM UTC
+  workflow_dispatch:      # Allows you to click "Run" manually in GitHub
 
 jobs:
-  update-site:
+  run-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Allows the bot to "push" the new images to your repo
     steps:
       - uses: actions/checkout@v4
       
@@ -17,17 +18,17 @@ jobs:
           python-version: '3.10'
 
       - name: Install Dependencies
-        run: pip install requests numpy matplotlib cartopy
+        run: pip install requests matplotlib cartopy
 
-      - name: Run AI Inference
+      - name: Generate AI Forecast
         env:
           NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
         run: python scripts/generate_forecast.py
 
-      - name: Commit and Deploy
+      - name: Commit and Push Images
         run: |
           git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config --local user.name "GitHub Action Bot"
           git add images/*.png
-          git commit -m "Auto-update: GFS 00Z/12Z Cycle" || echo "No changes to commit"
+          git commit -m "Auto-update: New Southeast US AI Forecast" || echo "No changes to commit"
           git push
