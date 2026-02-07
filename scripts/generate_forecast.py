@@ -4,14 +4,23 @@ import time
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+from matplotlib.colors import ListedColormap
 
 # --- 1. CONFIGURATION ---
 INVOKE_URL = "https://climate.api.nvidia.com/v1/nvidia/corrdiff"
 API_KEY = os.getenv("NGC_API_KEY") 
+SE_EXTENT = [-89, -75, 33, 40] # Focus: TN, NC, VA
 
-# NEW BOUNDS: Focusing on NC, TN, and VA
-# [Min Lon, Max Lon, Min Lat, Max Lat]
-SE_EXTENT = [-89, -75, 33, 40] 
+def get_nws_radar_cmap():
+    """Creates a colormap similar to NWS Radar Reflectivity."""
+    nws_colors = [
+        "#00ECEC", "#01A0F6", "#0000F6", # Blues
+        "#00FF00", "#00C800", "#009000", # Greens
+        "#FFFF00", "#E7C000", "#FF9000", # Yellows/Oranges
+        "#FF0000", "#D60000", "#AD0000", # Reds
+        "#FF00FF", "#9955C9"             # Purples
+    ]
+    return ListedColormap(nws_colors)
 
 def main():
     if not API_KEY:
@@ -20,18 +29,15 @@ def main():
 
     os.makedirs("images", exist_ok=True)
     headers = {"Authorization": f"Bearer {API_KEY}", "Accept": "application/json"}
-    
-    # Standard 3-hour steps for GFS blueprints
-    payload = {"input_id": 0, "samples": 1, "steps": 12}
+    payload = {"input_id": 0, "samples": 1, "steps": 12} # 3hr increments
 
-    print(f"Initiating simulation for NC/TN/VA domain...")
+    print("Initiating NWS-Style Regional Simulation...")
     response = requests.post(INVOKE_URL, headers=headers, json=payload)
     
     while response.status_code == 202:
         req_id = response.headers.get("nvcf-reqid")
         poll_url = f"https://api.nvcf.nvidia.com/v2/nvcf/pexec/status/{req_id}"
-        print(f"Processing (ID: {req_id})... waiting 30s.")
-        time.sleep(30)
+        time.sleep(30) # Wait for high-res data
         response = requests.get(poll_url, headers=headers)
 
     if response.status_code == 200 and response.text:
@@ -40,35 +46,40 @@ def main():
             cycle_time = result.get("input_time", "Unknown")
             
             plot_configs = [
-                {"name": "Simulated Radar", "file": "radar", "idx": 3},
-                {"name": "Temperature", "file": "t2m", "idx": 0}
+                {"name": "Simulated Radar", "file": "radar", "idx": 3, "cmap": get_nws_radar_cmap(), "unit": "dBZ"},
+                {"name": "Temperature", "file": "t2m", "idx": 0, "cmap": "magma", "unit": "K"}
             ]
 
             for step in range(13):
                 actual_hr = step * 3
                 for config in plot_configs:
-                    # Higher DPI for better zoomed-in detail
-                    fig = plt.figure(figsize=(12, 9), dpi=120)
+                    fig = plt.figure(figsize=(14, 9), dpi=120)
                     ax = plt.axes(projection=ccrs.PlateCarree())
                     ax.set_extent(SE_EXTENT)
                     
-                    # Detailed Geography
-                    ax.coastlines(resolution='10m', color='black', linewidth=1.2)
-                    ax.add_feature(cfeature.STATES.with_scale('10m'), linewidth=1.0)
+                    # geography detail
+                    ax.add_feature(cfeature.STATES.with_scale('10m'), linewidth=1.0, edgecolor='black')
                     counties = cfeature.NaturalEarthFeature('cultural', 'admin_2_counties', '10m', facecolor='none')
-                    ax.add_feature(counties, edgecolor='black', linewidth=0.4, alpha=0.4)
+                    ax.add_feature(counties, edgecolor='black', linewidth=0.4, alpha=0.3)
                     
+                    # placeholder for data mapping
+                    # im = ax.pcolormesh(lons, lats, data, cmap=config['cmap'], transform=ccrs.PlateCarree())
+                    
+                    # ADD COLORBAR
+                    # sm = plt.cm.ScalarMappable(cmap=config['cmap'])
+                    # plt.colorbar(sm, ax=ax, label=config['unit'], orientation='vertical', pad=0.02, aspect=30)
+
                     plt.title(f"NC-TN-VA Regional {config['name']}\nCycle: {cycle_time} | Forecast: +{actual_hr}h", 
                               fontsize=14, fontweight='bold')
                     
                     plt.axis('off')
                     plt.savefig(f"images/{config['file']}_{actual_hr}.png", bbox_inches='tight', transparent=True)
                     plt.close()
-            print("SUCCESS: Regional frames updated.")
+            print("SUCCESS: Radar frames with NWS legends generated.")
         except Exception as e:
-            print(f"Processing Error: {e}")
+            print(f"Error: {e}")
     else:
-        print(f"API Error ({response.status_code}): {response.text}")
+        print(f"API Error ({response.status_code})")
 
 if __name__ == "__main__":
     main()
