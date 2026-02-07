@@ -7,7 +7,7 @@
         body { margin: 0; background: #0a0a0a; color: #00ffcc; font-family: sans-serif; text-align: center; }
         #map { height: 70vh; width: 100%; border-bottom: 2px solid #00ffcc; }
         .ui-panel { padding: 15px; background: #111; }
-        .stats-bar { display: flex; justify-content: space-around; background: #1a1a1a; padding: 10px; border-bottom: 1px solid #333; font-weight: bold; }
+        .stats-bar { display: flex; justify-content: space-around; background: #1a1a1a; padding: 10px; border-bottom: 1px solid #333; font-weight: bold; font-size: 0.85em; }
         button { background: #222; color: #00ffcc; border: 1px solid #00ffcc; padding: 10px 12px; cursor: pointer; font-weight: bold; margin: 2px; }
         button.active { background: #00ffcc; color: #000; }
         input[type=range] { width: 85%; accent-color: #00ffcc; margin: 15px 0; }
@@ -16,8 +16,9 @@
 </head>
 <body>
     <div class="stats-bar">
+        <div>CYCLE: <span id="cycle-display" class="stat-value">...</span></div>
         <div>FORECAST: <span id="time-display" class="stat-value">...</span></div>
-        <div>REGION RAIN TOTAL: <span id="rain-total" class="stat-value">0.00</span> in</div>
+        <div>REGION RAIN: <span id="rain-total" class="stat-value">0.00</span> in</div>
     </div>
     <div id="map"></div>
     <div class="ui-panel">
@@ -30,48 +31,41 @@
             <button class="var-btn" onclick="setVar('wind', this)">Wind</button>
         </div>
     </div>
-
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         var map = L.map('map').setView([36.5, -82], 6.5); 
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
-
-        var currentVar = 'radar', currentHour = 0, overlay, rainData = {};
+        var currentVar = 'radar', currentHour = 0, overlay, siteMeta = {rain_totals: {}};
         var bounds = [[33, -89], [40, -75]]; 
 
-        // Load the REAL rain data from the Python output
-        fetch('images/rain_data.json').then(r => r.json()).then(data => { rainData = data; syncUpdate(); });
+        fetch('images/rain_data.json?v=' + Date.now()).then(r => r.json()).then(data => { 
+            siteMeta = data; 
+            document.getElementById('cycle-display').innerText = data.cycle;
+            syncUpdate(); 
+        });
 
         function syncUpdate() {
             currentHour = document.getElementById('hour-slider').value;
-            var path = `images/${currentVar}_${currentHour}.png`;
             if (overlay) map.removeLayer(overlay);
-            overlay = L.imageOverlay(path, bounds, {opacity: 0.8}).addTo(map);
-            
-            // Display REAL data from JSON
-            document.getElementById('time-display').innerText = currentHour + "h Forecast";
-            document.getElementById('rain-total').innerText = rainData[currentHour] || "0.00";
+            overlay = L.imageOverlay(`images/${currentVar}_${currentHour}.png?v=${Date.now()}`, bounds, {opacity: 0.8}).addTo(map);
+            document.getElementById('time-display').innerText = "+" + currentHour + "h";
+            document.getElementById('rain-total').innerText = siteMeta.rain_totals[currentHour] || "0.00";
         }
 
         var playing = false, playInterval;
         function togglePlay() {
-            playing = !playing;
-            document.getElementById('play-btn').innerText = playing ? "⏸ Pause" : "▶ Play";
+            playing = !playing; document.getElementById('play-btn').innerText = playing ? "⏸ Pause" : "▶ Play";
             if (playing) {
                 playInterval = setInterval(() => {
                     let h = parseInt(document.getElementById('hour-slider').value) + 3;
                     if (h > 36) h = 0;
-                    document.getElementById('hour-slider').value = h;
-                    syncUpdate();
+                    document.getElementById('hour-slider').value = h; syncUpdate();
                 }, 900);
             } else { clearInterval(playInterval); }
         }
-
         function setVar(v, btn) {
-            currentVar = v;
-            document.querySelectorAll('.var-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            syncUpdate();
+            currentVar = v; document.querySelectorAll('.var-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active'); syncUpdate();
         }
     </script>
 </body>
