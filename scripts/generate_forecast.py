@@ -17,19 +17,21 @@ def main():
 
     os.makedirs("images", exist_ok=True)
     headers = {"Authorization": f"Bearer {API_KEY}", "Accept": "application/json"}
-    payload = {"input_id": 0, "samples": 1, "steps": 12}
+    
+    # Requesting 36 steps for hourly output
+    # Note: Ensure your NIM profile supports 1hr intervals
+    payload = {"input_id": 0, "samples": 1, "steps": 36, "interval": 1}
 
-    print("Initiating high-res simulation...")
+    print("Initiating Hourly high-res simulation...")
     response = requests.post(INVOKE_URL, headers=headers, json=payload)
     
     while response.status_code == 202:
         req_id = response.headers.get("nvcf-reqid")
         poll_url = f"https://api.nvcf.nvidia.com/v2/nvcf/pexec/status/{req_id}"
-        print(f"Processing (ID: {req_id})... waiting 20s.")
-        time.sleep(20)
+        print(f"Processing (ID: {req_id})... waiting 30s to avoid JSON errors.")
+        time.sleep(30) # Increased delay to ensure data is ready
         response = requests.get(poll_url, headers=headers)
 
-    # SAFETY CHECK: Only proceed if we have a valid 200 OK with content
     if response.status_code == 200 and response.text:
         try:
             result = response.json()
@@ -37,32 +39,31 @@ def main():
             
             plot_configs = [
                 {"name": "Simulated Radar", "file": "radar", "idx": 3},
-                {"name": "Temperature", "file": "t2m", "idx": 0},
-                {"name": "Precipitation", "file": "precip", "idx": 5}
+                {"name": "Temperature", "file": "t2m", "idx": 0}
             ]
 
-            for step in [0, 4, 8, 12]:
-                forecast_hr = step * 3
+            # Loop through every hour for the first 24 hours
+            for hr in range(0, 25):
                 for config in plot_configs:
                     fig = plt.figure(figsize=(12, 8), dpi=100)
                     ax = plt.axes(projection=ccrs.PlateCarree())
                     ax.set_extent(SE_EXTENT)
                     
-                    # High-Res Geography
+                    # High-Res Geography with Counties
                     ax.coastlines(resolution='10m', color='black', linewidth=1)
                     ax.add_feature(cfeature.STATES.with_scale('10m'), linewidth=0.8)
                     counties = cfeature.NaturalEarthFeature('cultural', 'admin_2_counties', '10m', facecolor='none')
                     ax.add_feature(counties, edgecolor='black', linewidth=0.2, alpha=0.3)
                     
-                    plt.title(f"SE US {config['name']} | Cycle: {cycle_time}\nForecast Hour: +{forecast_hr}h", 
+                    plt.title(f"SE US {config['name']} | Cycle: {cycle_time}\nForecast: +{hr} Hour(s)", 
                               fontsize=14, fontweight='bold')
                     
                     plt.axis('off')
-                    plt.savefig(f"images/{config['file']}_{step}.png", bbox_inches='tight', transparent=True)
+                    plt.savefig(f"images/{config['file']}_{hr}.png", bbox_inches='tight', transparent=True)
                     plt.close()
-            print("SUCCESS: Forecast generated.")
+            print(f"SUCCESS: Generated 24 hourly frames for {len(plot_configs)} variables.")
         except Exception as e:
-            print(f"JSON Error: {e}")
+            print(f"JSON Error: {e} - Response may be empty.")
     else:
         print(f"API Error ({response.status_code}): {response.text}")
 
