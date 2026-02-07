@@ -1,20 +1,21 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SE US AI Weather</title>
+    <title>SE US AI Radar</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { margin: 0; background: #121212; color: white; font-family: sans-serif; text-align: center; }
-        #map { height: 75vh; width: 100%; }
-        .ui { padding: 20px; }
+        body { margin: 0; background: #0b0b0b; color: #00ffcc; font-family: 'Courier New', monospace; text-align: center; }
+        #map { height: 80vh; width: 100%; border-bottom: 2px solid #00ffcc; }
+        .controls { padding: 15px; background: #1a1a1a; }
+        button { background: #00ffcc; color: black; border: none; padding: 10px 20px; font-weight: bold; cursor: pointer; margin: 5px; }
     </style>
 </head>
 <body>
     <div id="map"></div>
-    <div class="ui">
-        <h1>Southeast US AI Forecast (3km High-Res)</h1>
-        <p>This map updates every 12 hours using NVIDIA Earth-2 and GFS data.</p>
-        <button onclick="location.reload()">Refresh Data</button>
+    <div class="controls">
+        <h2>AI Weather Station: Southeast US</h2>
+        <button onclick="updateLayer('images/radar_0.png')">Simulated Radar</button>
+        <button onclick="updateLayer('images/t2m_0.png')">Temperature</button>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -22,10 +23,17 @@
         var map = L.map('map').setView([31, -85], 6);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-        // This path 'images/t2m_0.png' is where the GitHub Bot saves the AI output
-        var imageUrl = 'images/t2m_0.png';
+        var currentOverlay;
         var imageBounds = [[24, -95], [37, -75]];
-        L.imageOverlay(imageUrl, imageBounds, {opacity: 0.7}).addTo(map);
+
+        function updateLayer(path) {
+            if (currentOverlay) map.removeLayer(currentOverlay);
+            // Append timestamp to force browser to refresh the image
+            currentOverlay = L.imageOverlay(path + '?t=' + new Date().getTime(), imageBounds, {opacity: 0.8}).addTo(map);
+        }
+
+        // Initialize with Radar
+        updateLayer('images/radar_0.png');
     </script>
 </body>
 </html>
