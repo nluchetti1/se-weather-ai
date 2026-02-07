@@ -1,16 +1,16 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SE US AI Weather Station</title>
+    <title>AI Weather Station</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; background: #121212; color: #00ffcc; font-family: sans-serif; text-align: center; }
         #map { height: 70vh; width: 100%; border-bottom: 2px solid #00ffcc; }
-        .ui-panel { padding: 20px; background: #1e1e1e; display: flex; flex-direction: column; align-items: center; gap: 15px; }
+        .ui-panel { padding: 20px; background: #1e1e1e; display: flex; flex-direction: column; align-items: center; gap: 10px; }
         .controls { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-        button { background: #333; color: #00ffcc; border: 1px solid #00ffcc; padding: 10px 15px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        button { background: #333; color: #00ffcc; border: 1px solid #00ffcc; padding: 10px 15px; cursor: pointer; font-weight: bold; }
         button:hover, button.active { background: #00ffcc; color: #000; }
-        .slider-container { width: 80%; max-width: 500px; }
+        .slider-container { width: 80%; max-width: 500px; padding: 10px; }
         input[type=range] { width: 100%; accent-color: #00ffcc; }
     </style>
 </head>
@@ -18,19 +18,14 @@
     <div id="map"></div>
     <div class="ui-panel">
         <h2 id="title-display">Simulated Radar - Hour +0</h2>
-        
         <div class="slider-container">
             <input type="range" id="hour-slider" min="0" max="12" step="4" value="0" oninput="syncUpdate()">
-            <div style="display: flex; justify-content: space-between;">
-                <span>+0h</span><span>+12h</span><span>+24h</span><span>+36h</span>
-            </div>
         </div>
-
         <div class="controls">
+            <button id="play-btn" onclick="togglePlay()">▶ Play Loop</button>
             <button class="var-btn active" onclick="setVar('radar', this)">Radar</button>
             <button class="var-btn" onclick="setVar('t2m', this)">Temp</button>
-            <button class="var-btn" onclick="setVar('precip', this)">Precip</button>
-            <button style="border-color: #ffcc00; color: #ffcc00;" onclick="downloadMap()">Download Map</button>
+            <button onclick="downloadMap()">💾 Download</button>
         </div>
     </div>
 
@@ -39,9 +34,7 @@
         var map = L.map('map').setView([31, -85], 6);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-        var currentVar = 'radar';
-        var currentStep = 0;
-        var overlay;
+        var currentVar = 'radar', currentStep = 0, overlay, playing = false, playInterval;
         var bounds = [[24, -95], [37, -75]];
 
         function syncUpdate() {
@@ -52,6 +45,19 @@
             document.getElementById('title-display').innerText = `${currentVar.toUpperCase()} - Hour +${currentStep * 3}`;
         }
 
+        function togglePlay() {
+            playing = !playing;
+            document.getElementById('play-btn').innerText = playing ? "⏸ Pause" : "▶ Play Loop";
+            if (playing) {
+                playInterval = setInterval(() => {
+                    let s = parseInt(document.getElementById('hour-slider').value) + 4;
+                    if (s > 12) s = 0;
+                    document.getElementById('hour-slider').value = s;
+                    syncUpdate();
+                }, 1000);
+            } else { clearInterval(playInterval); }
+        }
+
         function setVar(v, btn) {
             currentVar = v;
             document.querySelectorAll('.var-btn').forEach(b => b.classList.remove('active'));
@@ -60,13 +66,12 @@
         }
 
         function downloadMap() {
-            var link = document.createElement('a');
-            link.href = `images/${currentVar}_${currentStep}.png`;
-            link.download = `AI_Forecast_${currentVar}_H${currentStep*3}.png`;
-            link.click();
+            var a = document.createElement('a');
+            a.href = `images/${currentVar}_${currentStep}.png`;
+            a.download = `Forecast_${currentVar}_H${currentStep*3}.png`;
+            a.click();
         }
-
-        syncUpdate(); // Initial Load
+        syncUpdate();
     </script>
 </body>
 </html>
