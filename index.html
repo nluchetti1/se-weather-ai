@@ -1,21 +1,37 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SE US AI Radar</title>
+    <title>SE US AI Weather Station</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { margin: 0; background: #0b0b0b; color: #00ffcc; font-family: 'Courier New', monospace; text-align: center; }
-        #map { height: 80vh; width: 100%; border-bottom: 2px solid #00ffcc; }
-        .controls { padding: 15px; background: #1a1a1a; }
-        button { background: #00ffcc; color: black; border: none; padding: 10px 20px; font-weight: bold; cursor: pointer; margin: 5px; }
+        body { margin: 0; background: #121212; color: #00ffcc; font-family: sans-serif; text-align: center; }
+        #map { height: 70vh; width: 100%; border-bottom: 2px solid #00ffcc; }
+        .ui-panel { padding: 20px; background: #1e1e1e; display: flex; flex-direction: column; align-items: center; gap: 15px; }
+        .controls { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        button { background: #333; color: #00ffcc; border: 1px solid #00ffcc; padding: 10px 15px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        button:hover, button.active { background: #00ffcc; color: #000; }
+        .slider-container { width: 80%; max-width: 500px; }
+        input[type=range] { width: 100%; accent-color: #00ffcc; }
     </style>
 </head>
 <body>
     <div id="map"></div>
-    <div class="controls">
-        <h2>AI Weather Station: Southeast US</h2>
-        <button onclick="updateLayer('images/radar_0.png')">Simulated Radar</button>
-        <button onclick="updateLayer('images/t2m_0.png')">Temperature</button>
+    <div class="ui-panel">
+        <h2 id="title-display">Simulated Radar - Hour +0</h2>
+        
+        <div class="slider-container">
+            <input type="range" id="hour-slider" min="0" max="12" step="4" value="0" oninput="syncUpdate()">
+            <div style="display: flex; justify-content: space-between;">
+                <span>+0h</span><span>+12h</span><span>+24h</span><span>+36h</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="var-btn active" onclick="setVar('radar', this)">Radar</button>
+            <button class="var-btn" onclick="setVar('t2m', this)">Temp</button>
+            <button class="var-btn" onclick="setVar('precip', this)">Precip</button>
+            <button style="border-color: #ffcc00; color: #ffcc00;" onclick="downloadMap()">Download Map</button>
+        </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -23,17 +39,34 @@
         var map = L.map('map').setView([31, -85], 6);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-        var currentOverlay;
-        var imageBounds = [[24, -95], [37, -75]];
+        var currentVar = 'radar';
+        var currentStep = 0;
+        var overlay;
+        var bounds = [[24, -95], [37, -75]];
 
-        function updateLayer(path) {
-            if (currentOverlay) map.removeLayer(currentOverlay);
-            // Append timestamp to force browser to refresh the image
-            currentOverlay = L.imageOverlay(path + '?t=' + new Date().getTime(), imageBounds, {opacity: 0.8}).addTo(map);
+        function syncUpdate() {
+            currentStep = document.getElementById('hour-slider').value;
+            var path = `images/${currentVar}_${currentStep}.png`;
+            if (overlay) map.removeLayer(overlay);
+            overlay = L.imageOverlay(path, bounds, {opacity: 0.75}).addTo(map);
+            document.getElementById('title-display').innerText = `${currentVar.toUpperCase()} - Hour +${currentStep * 3}`;
         }
 
-        // Initialize with Radar
-        updateLayer('images/radar_0.png');
+        function setVar(v, btn) {
+            currentVar = v;
+            document.querySelectorAll('.var-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            syncUpdate();
+        }
+
+        function downloadMap() {
+            var link = document.createElement('a');
+            link.href = `images/${currentVar}_${currentStep}.png`;
+            link.download = `AI_Forecast_${currentVar}_H${currentStep*3}.png`;
+            link.click();
+        }
+
+        syncUpdate(); // Initial Load
     </script>
 </body>
 </html>
