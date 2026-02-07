@@ -1,63 +1,59 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Hourly AI Weather Station</title>
+    <title>NC/TN/VA AI Radar Station</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { margin: 0; background: #121212; color: #00ffcc; font-family: sans-serif; text-align: center; }
-        #map { height: 70vh; width: 100%; border-bottom: 2px solid #00ffcc; }
-        .ui-panel { padding: 20px; background: #1e1e1e; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-        .controls { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-        button { background: #333; color: #00ffcc; border: 1px solid #00ffcc; padding: 10px 15px; cursor: pointer; font-weight: bold; }
+        body { margin: 0; background: #0a0a0a; color: #00ffcc; font-family: 'Segoe UI', sans-serif; text-align: center; }
+        #map { height: 75vh; width: 100%; border-bottom: 2px solid #00ffcc; }
+        .ui-panel { padding: 15px; background: #111; border-top: 1px solid #333; }
+        .controls { display: flex; gap: 10px; justify-content: center; margin-top: 10px; }
+        button { background: #222; color: #00ffcc; border: 1px solid #00ffcc; padding: 10px 20px; cursor: pointer; font-weight: bold; }
         button:hover, button.active { background: #00ffcc; color: #000; }
-        .slider-container { width: 90%; max-width: 600px; padding: 10px; }
-        input[type=range] { width: 100%; accent-color: #00ffcc; }
+        input[type=range] { width: 80%; accent-color: #00ffcc; margin: 15px 0; }
     </style>
 </head>
 <body>
     <div id="map"></div>
     <div class="ui-panel">
-        <h2 id="title-display">Simulated Radar - Hour +0</h2>
-        <div class="slider-container">
-            <input type="range" id="hour-slider" min="0" max="24" step="1" value="0" oninput="syncUpdate()">
-            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 5px;">
-                <span>Start</span><span>+6h</span><span>+12h</span><span>+18h</span><span>+24h</span>
-            </div>
-        </div>
+        <h2 id="title-display">Radar Reflectivity - Hour +0</h2>
+        <input type="range" id="hour-slider" min="0" max="36" step="3" value="0" oninput="syncUpdate()">
         <div class="controls">
             <button id="play-btn" onclick="togglePlay()">▶ Play Animation</button>
-            <button class="var-btn active" onclick="setVar('radar', this)">Radar</button>
-            <button class="var-btn" onclick="setVar('t2m', this)">Temp</button>
-            <button onclick="downloadMap()">💾 Save Frame</button>
+            <button class="var-btn active" onclick="setVar('radar', this)">Radar (dBZ)</button>
+            <button class="var-btn" onclick="setVar('t2m', this)">Temp (K)</button>
+            <button onclick="downloadMap()">💾 Export Image</button>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        var map = L.map('map').setView([31, -85], 6);
+        var map = L.map('map').setView([36.5, -82], 6); 
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-        var currentVar = 'radar', currentStep = 0, overlay, playing = false, playInterval;
-        var bounds = [[24, -95], [37, -75]];
+        var currentVar = 'radar', currentHour = 0, overlay;
+        var bounds = [[33, -89], [40, -75]]; // Matches Python extent
 
         function syncUpdate() {
-            currentStep = document.getElementById('hour-slider').value;
-            var path = `images/${currentVar}_${currentStep}.png`;
+            currentHour = document.getElementById('hour-slider').value;
+            var path = `images/${currentVar}_${currentHour}.png`;
             if (overlay) map.removeLayer(overlay);
-            overlay = L.imageOverlay(path, bounds, {opacity: 0.75}).addTo(map);
-            document.getElementById('title-display').innerText = `${currentVar.toUpperCase()} - Forecast Hour +${currentStep}`;
+            overlay = L.imageOverlay(path, bounds, {opacity: 0.8}).addTo(map);
+            document.getElementById('title-display').innerText = `${currentVar.toUpperCase()} Forecast - Hour +${currentHour}`;
         }
 
+        // Animation Logic
+        var playing = false, playInterval;
         function togglePlay() {
             playing = !playing;
             document.getElementById('play-btn').innerText = playing ? "⏸ Pause" : "▶ Play Animation";
             if (playing) {
                 playInterval = setInterval(() => {
-                    let s = parseInt(document.getElementById('hour-slider').value) + 1;
-                    if (s > 24) s = 0;
-                    document.getElementById('hour-slider').value = s;
+                    let h = parseInt(document.getElementById('hour-slider').value) + 3;
+                    if (h > 36) h = 0;
+                    document.getElementById('hour-slider').value = h;
                     syncUpdate();
-                }, 500); // Faster playback for hourly data
+                }, 900);
             } else { clearInterval(playInterval); }
         }
 
@@ -68,12 +64,7 @@
             syncUpdate();
         }
 
-        function downloadMap() {
-            var a = document.createElement('a');
-            a.href = `images/${currentVar}_${currentStep}.png`;
-            a.download = `Hourly_Forecast_${currentVar}_H${currentStep}.png`;
-            a.click();
-        }
+        function downloadMap() { window.open(`images/${currentVar}_${currentHour}.png`); }
         syncUpdate();
     </script>
 </body>
