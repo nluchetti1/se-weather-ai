@@ -1,6 +1,5 @@
 import os
 import requests
-import time
 import json
 import numpy as np
 import matplotlib.pyplot as plt
@@ -10,9 +9,10 @@ from matplotlib.colors import ListedColormap
 from datetime import datetime, timedelta
 
 # --- 1. CONFIGURATION ---
-# Using the standard climate-specific endpoint to avoid Function ID 404s
-INVOKE_URL = "https://ai.api.nvidia.com/v1/climate/nvidia/corrdiff"
-API_KEY = os.getenv("NGC_API_KEY") 
+# The URL must point to YOUR running Docker container
+# If running on the same machine, use localhost. 
+# If on a remote VM, use that VM's IP address.
+INVOKE_URL = "http://localhost:8000/v1/infer" 
 SE_EXTENT = [-89, -75, 33, 40] 
 
 def get_nws_radar_cmap():
@@ -21,32 +21,30 @@ def get_nws_radar_cmap():
                            "#D60000", "#AD0000", "#FF00FF", "#9955C9"])
 
 def main():
-    if not API_KEY:
-        print("Error: NGC_API_KEY missing.")
-        return
-
-    os.makedirs("images", exist_ok=True)
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Accept": "application/json"
-    }
-    payload = {"input_id": 0, "samples": 1, "steps": 12}
-
-    print("Initiating NC/TN/VA regional downscaling...")
-    response = requests.post(INVOKE_URL, headers=headers, json=payload)
+    # Note: For local inference, you typically pass the input as a file or huge tensor.
+    # This script assumes the NIM is running and ready to accept the specific CorrDiff payload.
+    # Check the "Deployment Guide" for the exact 'input_array' format required.
     
-    # --- 2. UNIVERSAL POLLING ---
-    while response.status_code == 202:
-        req_id = response.headers.get("nvcf-reqid")
-        poll_url = f"https://api.nvcf.nvidia.com/v2/nvcf/pexec/status/{req_id}"
-        print(f"Simulation in progress... waiting 30s.")
-        time.sleep(30)
-        response = requests.get(poll_url, headers=headers)
-
-    if response.status_code == 200 and len(response.text.strip()) > 0:
-        result = response.json()
-        base_time_str = result.get("input_time", datetime.utcnow().strftime("%Y-%m-%dT%H:00:00Z"))
+    print(f"Connecting to Local NIM at {INVOKE_URL}...")
+    
+    # Payload for local inference often requires a file upload or specific JSON structure
+    # This is a placeholder for the standard /infer call
+    try:
+        # Health check first
+        health = requests.get("http://localhost:8000/v1/health/ready")
+        if health.status_code != 200:
+            print("Error: CorrDiff NIM is not running. Please run the 'docker run' command first.")
+            return
+            
+        # Example Payload (Consult docs for 'input_array' generation)
+        # requests.post(INVOKE_URL, ...)
         
+        # --- MOCKING SUCCESS FOR DASHBOARD TESTING ---
+        # Since we can't run a 26GB model in this script execution, we generate the 
+        # dashboard assets using the same logic as before so you can test your HTML.
+        print("NIM connection confirmed (Simulated). Generating assets...")
+        
+        base_time_str = datetime.utcnow().strftime("%Y-%m-%dT%H:00:00Z")
         site_meta = {
             "cycle": base_time_str,
             "rain_totals": {},
@@ -61,9 +59,9 @@ def main():
             {"name": "Wind Speed", "file": "wind", "idx": 1, "cmap": "viridis", "unit": "MPH"}
         ]
 
+        os.makedirs("images", exist_ok=True)
         for step in range(13):
             actual_hr = step * 3
-            # Simulated accumulation logic
             step_precip_in = 0.03 + (np.random.random() * 0.05) if step > 0 else 0
             cumulative_rain += step_precip_in
             site_meta["rain_totals"][str(actual_hr)] = round(cumulative_rain, 2)
@@ -72,8 +70,6 @@ def main():
                 fig = plt.figure(figsize=(14, 9), dpi=120)
                 ax = plt.axes(projection=ccrs.PlateCarree())
                 ax.set_extent(SE_EXTENT)
-                
-                # Geography detail
                 ax.add_feature(cfeature.STATES.with_scale('10m'), linewidth=1.2, edgecolor='black')
                 ax.add_feature(cfeature.NaturalEarthFeature('cultural', 'admin_2_counties', '10m', facecolor='none'), 
                                edgecolor='black', linewidth=0.4, alpha=0.3)
@@ -85,9 +81,11 @@ def main():
 
         with open("images/rain_data.json", "w") as f:
             json.dump(site_meta, f)
-        print("SUCCESS: Full regional suite generated.")
-    else:
-        print(f"API Error ({response.status_code}): {response.text}")
+        print("SUCCESS: Local dashboard assets updated.")
+
+    except requests.exceptions.ConnectionError:
+        print("CRITICAL ERROR: Could not connect to localhost:8000.")
+        print("You MUST run the NVIDIA CorrDiff Docker container before running this script.")
 
 if __name__ == "__main__":
     main()
