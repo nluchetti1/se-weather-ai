@@ -10,9 +10,8 @@ from matplotlib.colors import ListedColormap
 from datetime import datetime, timedelta
 
 # --- 1. CONFIGURATION ---
-# Using the direct NVCF execute endpoint for CorrDiff
-FUNCTION_ID = "62758169-122e-4b68-b769-e33b666d9f8c" # Standard CorrDiff US ID
-INVOKE_URL = f"https://api.nvcf.nvidia.com/v2/nvcf/pexec/functions/{FUNCTION_ID}"
+# Using the standard climate-specific endpoint to avoid Function ID 404s
+INVOKE_URL = "https://ai.api.nvidia.com/v1/climate/nvidia/corrdiff"
 API_KEY = os.getenv("NGC_API_KEY") 
 SE_EXTENT = [-89, -75, 33, 40] 
 
@@ -22,19 +21,21 @@ def get_nws_radar_cmap():
                            "#D60000", "#AD0000", "#FF00FF", "#9955C9"])
 
 def main():
-    if not API_KEY: return
+    if not API_KEY:
+        print("Error: NGC_API_KEY missing.")
+        return
+
     os.makedirs("images", exist_ok=True)
     headers = {
         "Authorization": f"Bearer {API_KEY}",
-        "Accept": "application/json",
-        "Content-Type": "application/json"
+        "Accept": "application/json"
     }
     payload = {"input_id": 0, "samples": 1, "steps": 12}
 
-    print("Requesting inference via NVCF Execute...")
+    print("Initiating NC/TN/VA regional downscaling...")
     response = requests.post(INVOKE_URL, headers=headers, json=payload)
     
-    # --- 2. POLLING STATUS ---
+    # --- 2. UNIVERSAL POLLING ---
     while response.status_code == 202:
         req_id = response.headers.get("nvcf-reqid")
         poll_url = f"https://api.nvcf.nvidia.com/v2/nvcf/pexec/status/{req_id}"
@@ -62,7 +63,7 @@ def main():
 
         for step in range(13):
             actual_hr = step * 3
-            # Calculating simulated rain accumulation
+            # Simulated accumulation logic
             step_precip_in = 0.03 + (np.random.random() * 0.05) if step > 0 else 0
             cumulative_rain += step_precip_in
             site_meta["rain_totals"][str(actual_hr)] = round(cumulative_rain, 2)
@@ -72,7 +73,7 @@ def main():
                 ax = plt.axes(projection=ccrs.PlateCarree())
                 ax.set_extent(SE_EXTENT)
                 
-                # High-res Geography
+                # Geography detail
                 ax.add_feature(cfeature.STATES.with_scale('10m'), linewidth=1.2, edgecolor='black')
                 ax.add_feature(cfeature.NaturalEarthFeature('cultural', 'admin_2_counties', '10m', facecolor='none'), 
                                edgecolor='black', linewidth=0.4, alpha=0.3)
@@ -84,7 +85,7 @@ def main():
 
         with open("images/rain_data.json", "w") as f:
             json.dump(site_meta, f)
-        print(f"SUCCESS: Regional suite generated for cycle {base_time_str}")
+        print("SUCCESS: Full regional suite generated.")
     else:
         print(f"API Error ({response.status_code}): {response.text}")
 
