@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AI Weather Station</title>
+    <title>Hourly AI Weather Station</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { margin: 0; background: #121212; color: #00ffcc; font-family: sans-serif; text-align: center; }
@@ -10,7 +10,7 @@
         .controls { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
         button { background: #333; color: #00ffcc; border: 1px solid #00ffcc; padding: 10px 15px; cursor: pointer; font-weight: bold; }
         button:hover, button.active { background: #00ffcc; color: #000; }
-        .slider-container { width: 80%; max-width: 500px; padding: 10px; }
+        .slider-container { width: 90%; max-width: 600px; padding: 10px; }
         input[type=range] { width: 100%; accent-color: #00ffcc; }
     </style>
 </head>
@@ -19,13 +19,16 @@
     <div class="ui-panel">
         <h2 id="title-display">Simulated Radar - Hour +0</h2>
         <div class="slider-container">
-            <input type="range" id="hour-slider" min="0" max="12" step="4" value="0" oninput="syncUpdate()">
+            <input type="range" id="hour-slider" min="0" max="24" step="1" value="0" oninput="syncUpdate()">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-top: 5px;">
+                <span>Start</span><span>+6h</span><span>+12h</span><span>+18h</span><span>+24h</span>
+            </div>
         </div>
         <div class="controls">
-            <button id="play-btn" onclick="togglePlay()">▶ Play Loop</button>
+            <button id="play-btn" onclick="togglePlay()">▶ Play Animation</button>
             <button class="var-btn active" onclick="setVar('radar', this)">Radar</button>
             <button class="var-btn" onclick="setVar('t2m', this)">Temp</button>
-            <button onclick="downloadMap()">💾 Download</button>
+            <button onclick="downloadMap()">💾 Save Frame</button>
         </div>
     </div>
 
@@ -42,19 +45,19 @@
             var path = `images/${currentVar}_${currentStep}.png`;
             if (overlay) map.removeLayer(overlay);
             overlay = L.imageOverlay(path, bounds, {opacity: 0.75}).addTo(map);
-            document.getElementById('title-display').innerText = `${currentVar.toUpperCase()} - Hour +${currentStep * 3}`;
+            document.getElementById('title-display').innerText = `${currentVar.toUpperCase()} - Forecast Hour +${currentStep}`;
         }
 
         function togglePlay() {
             playing = !playing;
-            document.getElementById('play-btn').innerText = playing ? "⏸ Pause" : "▶ Play Loop";
+            document.getElementById('play-btn').innerText = playing ? "⏸ Pause" : "▶ Play Animation";
             if (playing) {
                 playInterval = setInterval(() => {
-                    let s = parseInt(document.getElementById('hour-slider').value) + 4;
-                    if (s > 12) s = 0;
+                    let s = parseInt(document.getElementById('hour-slider').value) + 1;
+                    if (s > 24) s = 0;
                     document.getElementById('hour-slider').value = s;
                     syncUpdate();
-                }, 1000);
+                }, 500); // Faster playback for hourly data
             } else { clearInterval(playInterval); }
         }
 
@@ -68,7 +71,7 @@
         function downloadMap() {
             var a = document.createElement('a');
             a.href = `images/${currentVar}_${currentStep}.png`;
-            a.download = `Forecast_${currentVar}_H${currentStep*3}.png`;
+            a.download = `Hourly_Forecast_${currentVar}_H${currentStep}.png`;
             a.click();
         }
         syncUpdate();
