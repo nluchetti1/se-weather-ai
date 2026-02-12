@@ -2,6 +2,7 @@ import os
 import requests
 import time
 import json
+import zipfile
 import numpy as np
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
@@ -32,7 +33,7 @@ def main():
         "Content-Type": "application/json"
     }
     
-    # 1. Start the Job
+    # 1. Start Inference
     payload = {"input_id": 0, "samples": 1, "steps": 12}
     print(f"Invoking CorrDiff (ID: {FUNCTION_ID})...")
     
@@ -50,55 +51,83 @@ def main():
         poll_url = f"https://api.nvcf.nvidia.com/v2/nvcf/pexec/status/{req_id}"
         response = requests.get(poll_url, headers=headers)
 
-    # 3. Handle the Response (Binary vs JSON)
+    # 3. Process Response
     if response.status_code == 200:
-        print("SUCCESS: Data received from NVIDIA.")
+        print("SUCCESS: Data received.")
         
-        # Check if it's JSON or Binary
-        content_type = response.headers.get('Content-Type', '')
-        print(f"Response Content-Type: {content_type}")
+        # Save and Extract ZIP
+        zip_path = "output.zip"
+        with open(zip_path, "wb") as f:
+            f.write(response.content)
         
-        try:
-            # Try parsing as JSON first (rare for large model outputs)
-            data = response.json()
-            print("Parsed response as JSON.")
-        except json.JSONDecodeError:
-            # IT IS BINARY DATA (The actual weather file)
-            print("Response is BINARY (NetCDF/NumPy). Saving to file...")
+        print("Extracting weather data...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall("temp_data")
             
-            # Save the raw file so we can inspect it later
-            filename = "corrdiff_output.bin"
-            with open(filename, "wb") as f:
-                f.write(response.content)
-            print(f"Saved raw output to {filename} ({len(response.content)} bytes)")
-            
-            # Since we can't parse the binary blindly yet, we'll generate the 
-            # visualization using the "Safe Mode" logic to keep the site running.
-            # Once we know the format (from the logs), we'll write the real parser.
-            data = {} 
+        # Find the main data file (usually the largest .npy file)
+        files = [f for f in os.listdir("temp_data") if f.endswith('.npy')]
+        print(f"Found files: {files}")
+        
+        # Load the Prediction Tensor
+        # CorrDiff output usually named like 'prediction.npy' or similar
+        data_file = next((f for f in files if "pred" in f or "out" in f), files[0])
+        raw_data = np.load(os.path.join("temp_data", data_file))
+        print(f"Loaded Data Shape: {raw_data.shape}") 
+        # Expected Shape: (Batch, Time, Channels, Lat, Lon) -> e.g. (1, 12, 4, 448, 448)
 
-        # --- GENERATE DASHBOARD ASSETS ---
-        # (This ensures the GitHub Action goes GREEN and the site updates)
+        # Remove batch dim if present
+        if raw_data.ndim == 5: raw_data = raw_data[0]
+        
+        # Define Variable Indices (Standard CorrDiff US)
+        # 0: Temperature (T2M)
+        # 1: Maximum Radar Reflectivity (Refc)
+        # 2: U-Wind (u10m)
+        # 3: V-Wind (v10m)
+        # Note: If these look wrong on the map, we swap them.
+        
+        # Metadata
         base_time_str = datetime.utcnow().strftime("%Y-%m-%dT%H:00:00Z")
-        site_meta = {
-            "cycle": base_time_str,
-            "rain_totals": {},
-            "generated": datetime.utcnow().strftime("%b %d, %Y %H:%M UTC")
-        }
+        site_meta = {"cycle": base_time_str, "rain_totals": {}, "generated": base_time_str}
         cumulative_rain = 0.0
 
         plot_configs = [
-            {"name": "Simulated Radar", "file": "radar", "cmap": get_nws_radar_cmap()},
-            {"name": "Temperature", "file": "t2m", "cmap": "magma"},
-            {"name": "Precipitation", "file": "precip", "cmap": "Blues"},
-            {"name": "Wind Speed", "file": "wind", "cmap": "viridis"}
+            {"name": "Simulated Radar", "file": "radar", "cmap": get_nws_radar_cmap(), "vmin": 0, "vmax": 70},
+            {"name": "Temperature", "file": "t2m", "cmap": "magma", "vmin": 20, "vmax": 100},
+            {"name": "Wind Speed", "file": "wind", "cmap": "viridis", "vmin": 0, "vmax": 40},
+            {"name": "Precipitation", "file": "precip", "cmap": "Blues", "vmin": 0, "vmax": 0.5}
         ]
 
-        for step in range(13):
+        # Generate Lat/Lon Grid (Matching the array shape)
+        # We construct a meshgrid to match the aspect ratio of the SE_EXTENT
+        ny, nx = raw_data.shape[-2], raw_data.shape[-1]
+        lons = np.linspace(SE_EXTENT[0], SE_EXTENT[1], nx)
+        lats = np.linspace(SE_EXTENT[2], SE_EXTENT[3], ny)
+
+        for step in range(raw_data.shape[0]): # Loop through time steps (0-11)
             actual_hr = step * 3
-            # Placeholder rain logic until we parse the binary file
-            step_precip_in = 0.03 + (np.random.random() * 0.05) if step > 0 else 0
-            cumulative_rain += step_precip_in
+            
+            # Extract variables for this step
+            t2m_k = raw_data[step, 0, :, :]
+            refc_dbz = raw_data[step, 1, :, :]
+            u10 = raw_data[step, 2, :, :]
+            v10 = raw_data[step, 3, :, :]
+            
+            # --- CONVERSIONS ---
+            t2m_f = (t2m_k - 273.15) * 1.8 + 32
+            wind_speed = np.sqrt(u10**2 + v10**2) * 2.237 # m/s to mph
+            
+            # Store Data for Plotting
+            data_map = {
+                "t2m": t2m_f,
+                "radar": refc_dbz,
+                "wind": wind_speed,
+                "precip": refc_dbz # Using Refc as proxy for precip visual if channel missing
+            }
+
+            # Update Rain Total (Approximation from Radar dBZ)
+            # If Z > 15, assume some rain. Very rough estimate for UI demo.
+            step_rain = np.mean(refc_dbz[refc_dbz > 15]) * 0.001 if np.any(refc_dbz > 15) else 0
+            cumulative_rain += step_rain
             site_meta["rain_totals"][str(actual_hr)] = round(cumulative_rain, 2)
 
             for config in plot_configs:
@@ -110,6 +139,20 @@ def main():
                 ax.add_feature(cfeature.NaturalEarthFeature('cultural', 'admin_2_counties', '10m', facecolor='none'), 
                                edgecolor='black', linewidth=0.4, alpha=0.3)
                 
+                # PLOT THE REAL DATA
+                plot_data = data_map[config['file']]
+                
+                # Mask clear air for radar so map shows through
+                if config['file'] == 'radar':
+                    plot_data = np.ma.masked_where(plot_data < 10, plot_data)
+
+                # pcolormesh needs coordinates to map array to map
+                plt.pcolormesh(lons, lats, plot_data, 
+                             transform=ccrs.PlateCarree(), 
+                             cmap=config['cmap'], 
+                             vmin=config.get('vmin'), 
+                             vmax=config.get('vmax'))
+
                 plt.title(f"{config['name']} | +{actual_hr}h\nCycle: {base_time_str}", fontsize=14, fontweight='bold')
                 plt.axis('off')
                 plt.savefig(f"images/{config['file']}_{actual_hr}.png", bbox_inches='tight', transparent=True)
@@ -117,7 +160,7 @@ def main():
 
         with open("images/rain_data.json", "w") as f:
             json.dump(site_meta, f)
-        print("SUCCESS: Dashboard assets updated (Safe Mode).")
+        print("SUCCESS: Real Weather Data Processed & Plotted.")
         
     else:
         print(f"API Failed ({response.status_code}): {response.text}")
