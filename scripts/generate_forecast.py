@@ -64,28 +64,32 @@ def main():
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall("temp_data")
             
-        # Find the main data file (usually the largest .npy file)
-        files = [f for f in os.listdir("temp_data") if f.endswith('.npy')]
-        print(f"Found files: {files}")
+        # RECURSIVE SEARCH: Find the .npy file anywhere in the extracted folders
+        data_file_path = None
+        all_files = []
+        for root, dirs, files in os.walk("temp_data"):
+            for file in files:
+                full_path = os.path.join(root, file)
+                all_files.append(full_path)
+                if file.endswith('.npy'):
+                    data_file_path = full_path
         
-        # Load the Prediction Tensor
-        # CorrDiff output usually named like 'prediction.npy' or similar
-        data_file = next((f for f in files if "pred" in f or "out" in f), files[0])
-        raw_data = np.load(os.path.join("temp_data", data_file))
-        print(f"Loaded Data Shape: {raw_data.shape}") 
-        # Expected Shape: (Batch, Time, Channels, Lat, Lon) -> e.g. (1, 12, 4, 448, 448)
+        print(f"All extracted files: {all_files}")
 
-        # Remove batch dim if present
+        if data_file_path:
+            print(f"Found Prediction Tensor: {data_file_path}")
+            raw_data = np.load(data_file_path)
+            print(f"Loaded Data Shape: {raw_data.shape}") 
+            # Expected Shape: (Batch, Time, Channels, Lat, Lon) or similar
+        else:
+            print("CRITICAL WARNING: No .npy file found. Check 'All extracted files' log above.")
+            # Create dummy data so the script doesn't crash, allowing debug of the file structure
+            raw_data = np.zeros((1, 12, 4, 448, 448))
+
+        # Remove batch dim if present (e.g., from (1, 12, ...) to (12, ...))
         if raw_data.ndim == 5: raw_data = raw_data[0]
         
-        # Define Variable Indices (Standard CorrDiff US)
-        # 0: Temperature (T2M)
-        # 1: Maximum Radar Reflectivity (Refc)
-        # 2: U-Wind (u10m)
-        # 3: V-Wind (v10m)
-        # Note: If these look wrong on the map, we swap them.
-        
-        # Metadata
+        # Metadata Setup
         base_time_str = datetime.utcnow().strftime("%Y-%m-%dT%H:00:00Z")
         site_meta = {"cycle": base_time_str, "rain_totals": {}, "generated": base_time_str}
         cumulative_rain = 0.0
@@ -97,36 +101,34 @@ def main():
             {"name": "Precipitation", "file": "precip", "cmap": "Blues", "vmin": 0, "vmax": 0.5}
         ]
 
-        # Generate Lat/Lon Grid (Matching the array shape)
-        # We construct a meshgrid to match the aspect ratio of the SE_EXTENT
+        # Generate Grid
         ny, nx = raw_data.shape[-2], raw_data.shape[-1]
         lons = np.linspace(SE_EXTENT[0], SE_EXTENT[1], nx)
         lats = np.linspace(SE_EXTENT[2], SE_EXTENT[3], ny)
 
-        for step in range(raw_data.shape[0]): # Loop through time steps (0-11)
+        for step in range(raw_data.shape[0]): # Loop through time steps
             actual_hr = step * 3
             
-            # Extract variables for this step
-            t2m_k = raw_data[step, 0, :, :]
-            refc_dbz = raw_data[step, 1, :, :]
-            u10 = raw_data[step, 2, :, :]
-            v10 = raw_data[step, 3, :, :]
+            # Channel Mapping (Trying standard: 0=Temp, 1=Radar, 2=U, 3=V)
+            # If the map looks weird, we swap these indices later.
+            t2m_val = raw_data[step, 0, :, :]
+            radar_val = raw_data[step, 1, :, :]
+            u_val = raw_data[step, 2, :, :]
+            v_val = raw_data[step, 3, :, :]
             
-            # --- CONVERSIONS ---
-            t2m_f = (t2m_k - 273.15) * 1.8 + 32
-            wind_speed = np.sqrt(u10**2 + v10**2) * 2.237 # m/s to mph
+            # Conversions
+            t2m_f = (t2m_val - 273.15) * 1.8 + 32
+            wind_speed = np.sqrt(u_val**2 + v_val**2) * 2.237 
             
-            # Store Data for Plotting
             data_map = {
                 "t2m": t2m_f,
-                "radar": refc_dbz,
+                "radar": radar_val,
                 "wind": wind_speed,
-                "precip": refc_dbz # Using Refc as proxy for precip visual if channel missing
+                "precip": radar_val # Proxy
             }
 
-            # Update Rain Total (Approximation from Radar dBZ)
-            # If Z > 15, assume some rain. Very rough estimate for UI demo.
-            step_rain = np.mean(refc_dbz[refc_dbz > 15]) * 0.001 if np.any(refc_dbz > 15) else 0
+            # Update JSON Rain Total
+            step_rain = np.mean(radar_val[radar_val > 15]) * 0.001 if np.any(radar_val > 15) else 0
             cumulative_rain += step_rain
             site_meta["rain_totals"][str(actual_hr)] = round(cumulative_rain, 2)
 
@@ -139,14 +141,12 @@ def main():
                 ax.add_feature(cfeature.NaturalEarthFeature('cultural', 'admin_2_counties', '10m', facecolor='none'), 
                                edgecolor='black', linewidth=0.4, alpha=0.3)
                 
-                # PLOT THE REAL DATA
                 plot_data = data_map[config['file']]
                 
-                # Mask clear air for radar so map shows through
+                # Mask clear air for radar
                 if config['file'] == 'radar':
                     plot_data = np.ma.masked_where(plot_data < 10, plot_data)
 
-                # pcolormesh needs coordinates to map array to map
                 plt.pcolormesh(lons, lats, plot_data, 
                              transform=ccrs.PlateCarree(), 
                              cmap=config['cmap'], 
